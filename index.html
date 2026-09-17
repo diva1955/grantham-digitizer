@@ -1,8 +1,6 @@
 <!DOCTYPE html>
 <html lang="ml">
 <head>
-<link rel="manifest" href="/manifest.json" />
-<meta name="theme-color" content="#4338ca" />
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <title>ഗ്രന്ഥശാലാ സ്റ്റോക്ക് ഡിജിറ്റൈസർ</title>
@@ -10,7 +8,7 @@
 </head>
 <body class="bg-slate-50 text-slate-900 pb-20">
 
-  <!-- Top Header -->
+  <!-- Header -->
   <header class="bg-indigo-700 text-white px-4 py-3 sticky top-0 z-30 shadow-md flex justify-between items-center">
     <div>
       <h1 class="text-lg font-bold">സ്റ്റോക്ക് ഡിജിറ്റൈസർ</h1>
@@ -20,7 +18,7 @@
   </header>
 
   <main class="max-w-xl mx-auto p-4 space-y-4">
-    <!-- Camera / Capture Section -->
+    <!-- Camera Section -->
     <div class="bg-white border-2 border-dashed border-indigo-300 rounded-xl p-4 text-center shadow-sm">
       <input type="file" id="cameraInput" accept="image/*" capture="environment" class="hidden" onchange="handleFileSelected(event)" />
       
@@ -31,74 +29,108 @@
         </svg>
         <span class="text-base">ഫോട്ടോ എടുക്കുക (Take Photo)</span>
       </button>
-      <p class="text-xs text-slate-500 mt-2">ക്യാമറ ഉപയോഗിച്ചോ ഗാലറിയിൽ നിന്നോ പേജ് തിരഞ്ഞെടുക്കുക</p>
+      <p class="text-xs text-slate-500 mt-2">രജിസ്റ്ററിന്റെ രണ്ട് പേജുകളും വ്യക്തമായി കാണുന്ന രീതിയിൽ പകർത്തുക</p>
     </div>
 
-    <!-- Image Preview Thumbnail -->
+    <!-- Preview -->
     <div id="previewCard" class="hidden bg-white p-3 rounded-lg border border-slate-200 shadow-sm flex items-center space-x-3">
       <img id="imagePreview" src="" class="w-16 h-20 object-cover rounded border" />
       <div class="flex-1">
-        <p id="previewText" class="text-xs text-slate-600 font-medium">സ്കാൻ ചെയ്യാൻ തയ്യാറാണ്</p>
+        <p id="previewText" class="text-xs text-slate-600 font-medium">ചിത്രം തയ്യാറാണ്</p>
         <button id="scanBtn" onclick="uploadAndScan()" class="mt-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold px-3 py-1.5 rounded transition">
           ഡാറ്റ വേർതിരിക്കുക (Extract Rows)
         </button>
       </div>
     </div>
 
-    <!-- Loading Spinner -->
+    <!-- Spinner -->
     <div id="loader" class="hidden text-center py-6">
       <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-indigo-600 border-t-transparent"></div>
-      <p class="text-sm font-medium text-indigo-700 mt-2">മലയാളം അക്ഷരങ്ങൾ വായിക്കുന്നു... ദയവായി കാത്തിരിക്കുക.</p>
+      <p id="loaderStatus" class="text-sm font-medium text-indigo-700 mt-2">അക്ഷരങ്ങൾ വായിക്കുന്നു... ദയവായി കാത്തിരിക്കുക.</p>
     </div>
 
-    <!-- Extracted Data Table Review -->
+    <!-- Table of Results -->
     <div id="resultsCard" class="hidden space-y-3">
       <div class="flex justify-between items-center">
         <h2 class="font-bold text-slate-800 text-base">പരിശോധിക്കുക (Review & Edit)</h2>
         <button onclick="addRow()" class="text-xs bg-slate-200 hover:bg-slate-300 text-slate-700 px-2.5 py-1 rounded font-medium">+ വരി ചേർക്കുക</button>
       </div>
-
-      <div id="entriesList" class="space-y-3">
-        <!-- Dynamic Row Cards will be injected here -->
-      </div>
+      <div id="entriesList" class="space-y-3"></div>
     </div>
   </main>
 
-  <!-- Sticky Bottom Export Action Bar -->
+  <!-- Sticky Export Bar -->
   <div id="footerBar" class="hidden fixed bottom-0 inset-x-0 bg-white border-t border-slate-200 p-3 flex justify-between items-center max-w-xl mx-auto shadow-lg z-20">
-    <div>
-      <span id="totalItems" class="text-xs text-slate-600 font-medium">0 ഇനങ്ങൾ റെഡി</span>
-    </div>
+    <span id="totalItems" class="text-xs text-slate-600 font-medium">0 ഇനങ്ങൾ</span>
     <button onclick="downloadExcel()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg flex items-center space-x-2 shadow">
-      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-      </svg>
       <span>എക്സൽ ഡൗൺലോഡ് (Excel)</span>
     </button>
   </div>
 
   <script>
-    let currentImageFile = null;
+    let preparedBlob = null;
     let extractedEntries = [];
 
+    // Client-side auto-compression and orientation normalization
     function handleFileSelected(event) {
       const file = event.target.files[0];
       if (!file) return;
-      currentImageFile = file;
 
       const reader = new FileReader();
-      reader.onload = (e) => {
-        document.getElementById('imagePreview').src = e.target.result;
-        document.getElementById('previewCard').classList.remove('hidden');
+      reader.onload = function(e) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          // If phone captured portrait, rotate canvas to landscape for wide ledger
+          let needsRotation = height > width;
+          const maxDim = 2000;
+
+          if (needsRotation) {
+            // Swap dimensions for 90-degree turn
+            let temp = width; width = height; height = temp;
+          }
+
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+
+          if (needsRotation) {
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.rotate((90 * Math.PI) / 180);
+            ctx.drawImage(img, -height / 2, -width / 2, height, width);
+          } else {
+            ctx.drawImage(img, 0, 0, width, height);
+          }
+
+          canvas.toBlob(function(blob) {
+            preparedBlob = blob;
+            document.getElementById('imagePreview').src = URL.createObjectURL(blob);
+            document.getElementById('previewCard').classList.remove('hidden');
+          }, 'image/jpeg', 0.88);
+        };
+        img.src = e.target.result;
       };
       reader.readAsDataURL(file);
     }
 
     async function uploadAndScan() {
-      if (!currentImageFile) return;
+      if (!preparedBlob) return;
 
       const formData = new FormData();
-      formData.append('file', currentImageFile);
+      formData.append('file', preparedBlob, 'register.jpg');
 
       document.getElementById('loader').classList.remove('hidden');
       document.getElementById('scanBtn').disabled = true;
@@ -109,13 +141,16 @@
           body: formData
         });
 
-        if (!response.ok) throw new Error('Extraction failed');
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`Server status ${response.status}: ${errText}`);
+        }
 
         const result = await response.json();
         extractedEntries = result.entries || [];
         renderRows();
       } catch (err) {
-        alert('Error extracting page: ' + err.message);
+        alert('സ്കാനിംഗ് തടസ്സപ്പെട്ടു: ' + err.message);
       } finally {
         document.getElementById('loader').classList.add('hidden');
         document.getElementById('scanBtn').disabled = false;
@@ -146,7 +181,7 @@
           </div>
           <div>
             <label class="text-[11px] text-slate-500 block font-semibold text-slate-700">പുസ്തകത്തിന്റെ പേര് (Title)</label>
-            <input type="text" value="${row.book_title || ''}" onchange="updateField(${idx}, 'book_title', this.value)" class="w-full border rounded px-2 py-1.5 text-sm font-medium border-indigo-200 focus:border-indigo-500" />
+            <input type="text" value="${row.book_title || ''}" onchange="updateField(${idx}, 'book_title', this.value)" class="w-full border rounded px-2 py-1.5 text-sm font-medium border-indigo-200" />
           </div>
           <div>
             <label class="text-[11px] text-slate-500 block">ഗ്രന്ഥകർത്താവ് / പ്രസാധകൻ</label>
@@ -192,13 +227,11 @@
 
     async function downloadExcel() {
       if (!extractedEntries.length) return;
-
       const res = await fetch('/api/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(extractedEntries)
       });
-
       const blob = await res.blob();
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
