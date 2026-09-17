@@ -1,0 +1,15 @@
+{
+  "name": "ഗ്രന്ഥശാലാ സ്റ്റോക്ക് ഡിജിറ്റൈസർ",
+  "short_name": "ഗ്രന്ഥം സ്കാനർ",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#4338ca",
+  "theme_color": "#4338ca",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/2232/2232688.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
