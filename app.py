@@ -31,16 +31,16 @@ client = genai.Client(api_key=API_KEY)
 MODEL_ID = "gemini-3.6-flash"
 
 class RegisterEntry(BaseModel):
-    stock_no: str = Field(default="", description="സ്റ്റോക്ക് നമ്പർ (Column 1 numeric accession/stock number)")
-    book_title: str = Field(default="", description="പുസ്തകത്തിന്റെ പേര് (Column 2 Malayalam or English book title)")
-    author_publisher: Optional[str] = Field(default="", description="ഗ്രന്ഥകർത്താവിന്റെയും പ്രസാധകന്റെയും പേര് (Column 3)")
+    stock_no: str = Field(default="", description="സ്റ്റോക്ക് നമ്പർ (Column 1 numeric accession number)")
+    book_title: str = Field(default="", description="പുസ്തകത്തിന്റെ പേര് (Column 2 Book Title)")
+    author_publisher: Optional[str] = Field(default="", description="ഗ്രന്ഥകർത്താവിന്റെയും പ്രസാധകന്റെയും പേര് (Column 3 Author/Publisher)")
     category: Optional[str] = Field(default="", description="ഏത് വിഭാഗത്തിൽ പെടുന്നു (Column 4)")
-    how_obtained: Optional[str] = Field(default="", description="എങ്ങനെ കിട്ടി (Column 5 e.g. വിലയ്ക്ക്, KSLC)")
+    how_obtained: Optional[str] = Field(default="", description="എങ്ങനെ കിട്ടി (Column 5 e.g. ഗ്രാൻഡ്, വിലയ്ക്ക്)")
     price: Optional[str] = Field(default="", description="വില (Column 6 Price in ₹)")
-    bill: Optional[str] = Field(default="", description="ബില്ല് (Column 7 Bill/voucher details)")
+    bill: Optional[str] = Field(default="", description="ബില്ല് (Column 7 Bill/Voucher)")
     date: Optional[str] = Field(default="", description="തീയതി (Column 8 Date)")
-    voucher_posted: Optional[str] = Field(default="", description="പോസ്റ്റ് ചെയ്തത് / വൗച്ചർ നമ്പർ (Column 9)")
-    classification_no: Optional[str] = Field(default="", description="ക്ലാസിഫിക്കേഷൻ നമ്പർ (Column 10 / Call no)")
+    voucher_posted: Optional[str] = Field(default="", description="പോസ്റ്റ് ചെയ്തത് (Column 9)")
+    classification_no: Optional[str] = Field(default="", description="ക്ലാസിഫിക്കേഷൻ നമ്പർ (Column 10)")
     almirah_no: Optional[str] = Field(default="", description="അലമാര നമ്പർ (Column 11)")
     remarks: Optional[str] = Field(default="", description="റിമാർക്സ് (Column 12)")
 
@@ -48,19 +48,16 @@ class PageExtraction(BaseModel):
     entries: List[RegisterEntry]
 
 def fix_image_orientation(image_bytes: bytes) -> bytes:
-    """Corrects EXIF tag, ensures the ledger is horizontal (landscape), and optimizes resolution."""
     img = Image.open(io.BytesIO(image_bytes))
     img = ImageOps.exif_transpose(img)
     
-    # If photo is vertical (height > width) but register text reads vertically sideways,
-    # rotate 90 degrees clockwise to make ledger horizontal.
+    # Auto-rotate to landscape if phone uploaded upright portrait
     if img.height > img.width:
         img = img.rotate(270, expand=True)
 
     if img.mode in ("RGBA", "P"):
         img = img.convert("RGB")
         
-    # Scale to maximum 2400px preserving sharp Malayalam ligatures
     if max(img.size) > 2400:
         img.thumbnail((2400, 2400), Image.Resampling.LANCZOS)
 
@@ -78,21 +75,26 @@ async def scan_page(file: UploadFile = File(...)):
         jpeg_bytes = fix_image_orientation(raw_bytes)
 
         prompt = """
-        You are transcribing a two-page spread of a Kerala Library Council Stock Register (സ്റ്റോക്ക് രജിസ്റ്റർ).
+        You are an expert archivist transcribing a two-page spread of a Kerala Library Council Stock Register (സ്റ്റോക്ക് രജിസ്റ്റർ).
 
-        CRITICAL ROW-BY-ROW ALIGNMENT RULES:
-        1. ORIENTATION & READING ORDER:
-           - Read rows strictly horizontally from the left page across to the right page.
-           - Column 1 starts with the stock number (സ്റ്റോക്ക് നമ്പർ, e.g., 26152, 26153...).
-           - Column 2 is the Book Title (പുസ്തകത്തിന്റെ പേര്).
-           - Column 3 is the Author/Publisher (ഗ്രന്ഥകർത്താവിന്റെയും പ്രസാധകന്റെയും പേര്).
-           - Right page columns: വില (Price), ബില്ല് (Bill), തീയതി (Date), ക്ലാസിഫിക്കേഷൻ / പേജ് നമ്പർ.
+        CRITICAL ROW-MATCHING & ALIGNMENT RULES:
+        1. STRICT LINE-BY-LINE ALIGNMENT:
+           - Each output row must correspond to ONE continuous printed horizontal line across both left and right pages.
+           - Column 1 (സ്റ്റോക്ക് നമ്പർ), Column 2 (പുസ്തകത്തിന്റെ പേര്), and Column 3 (ഗ്രന്ഥകർത്താവ്) MUST come from the exact same row.
+           - DO NOT shift authors or titles across rows.
+           - If Row 1 has an empty title or was an unused header line, DO NOT pull the author from Row 2 into Row 1.
+           - ONLY extract rows that contain an actual book entry. Skip empty rows.
 
-        2. ACCURATE COLUMN RECOGNITION:
-           - Ignore red-ink section headers or publisher stamp notes (like 'Poorna' or 'Current Books') written across margins unless they are the explicit author/publisher entry for that line.
-           - Malayalam Titles: Transcribe accurately with ligatures (കൂട്ടക്ഷരങ്ങൾ: ക്ക, ച്ച, ത്ത, പ്പ, ണ്ട, ന്ത) and chillu letters (ർ, ൽ, ൾ, ൻ, ൺ).
-           - English Titles: Transcribe competitive exam / civil service guides cleanly (e.g. 'Handbook of Physics', 'UPSC Prelims Solved Papers').
-           - Ditto Marks ('"' or '-'): Replace them with the actual text copied from the row immediately above.
+        2. ACCURATE COLUMN VALUES:
+           - Column 1: സ്റ്റോക്ക് നമ്പർ (e.g., 26169, 26170, 26171...)
+           - Column 2: പുസ്തകത്തിന്റെ പേര് (e.g., 26169 is 'കേസ് ഫയൽസ്', 26170 is 'രാജമുദ്ര കേസ് ഡയറി', 26171 is 'കഥ', 26172 is 'ഒടുക്കം')
+           - Column 3: ഗ്രന്ഥകർത്താവിന്റെയും പ്രസാധകന്റെയും പേര് (e.g., for 26169 it is 'ശ്യാം കൃഷ്ണൻ, സി.യു', for 26170 it is 'സുരേന്ദ്രൻ മണ്ണാട്', for 26171 it is 'സാറാ ജോസഫ്')
+           - Column 4: വിഭാഗം (e.g., Novel, Essays, ഓർമ്മ, കഥ)
+           - Column 5: എങ്ങനെ കിട്ടി (e.g., 'ഗ്രാന്റ്' or 'വിലയ്ക്ക്')
+           - Columns 6+: വില (Price), ബില്ല് (Bill), തീയതി (Date), ക്ലാസിഫിക്കേഷൻ നമ്പർ.
+
+        3. DITTO MARKS ('"' or '-'):
+           - Expand ditto marks to the text of the valid cell directly above.
         """
 
         for attempt in range(1, 4):
@@ -153,5 +155,4 @@ async def export_to_excel(entries: List[RegisterEntry]):
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
     with open(os.path.join(os.path.dirname(__file__), "index.html"), "r", encoding="utf-8") as f:
-        return f.read()th.dirname(__file__), "index.html"), "r", encoding="utf-8") as f:
         return f.read()
